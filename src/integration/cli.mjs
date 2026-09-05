@@ -930,7 +930,11 @@ async function init(args) {
 		return checkAndUpdate(packageName, { apply });
 	}
 
-	console.log(`\n${colours.bold}Shirone${colours.reset} · initialising project\n`);
+	console.log(`\n${colours.bold}Shirone${colours.reset} · initialising project`);
+	const pmPin = (await readPackageManager()) ?? "pnpm";
+	console.log(
+		`${colours.dim}  uses ${pmPin} as the package manager — init only sets up a pnpm project; migrate manually for npm or yarn.${colours.reset}\n`,
+	);
 
 	// 1. Content + configuration.
 	await copyEntry(join(TEMPLATE_DIR, CONTENT_ROOT), join(CWD, CONTENT_ROOT), { force });
