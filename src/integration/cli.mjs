@@ -2,9 +2,10 @@
 /**
  * Shirone CLI.
  *
- *   npx shirones init      scaffold config, content and static assets
- *   npx shirones init --force
- *   npx shirones info      print resolved paths and the injected route table
+ *   npx shirones init            scaffold config, content and static assets
+ *   npx shirones init --update   restore missing files on an existing project
+ *   npx shirones init --force    re-scaffold, overwriting template files
+ *   npx shirones info            detailed status and drift report
  *
  * The command is intentionally dependency-free so it can run via `npx` in a
  * bare project before anything else is installed.
@@ -280,8 +281,21 @@ async function ensurePackageJson(packageName) {
 	};
 
 	const addedDeps = [];
+	const upgradedDeps = [];
 	for (const [dep, range] of Object.entries(wantedDeps)) {
-		if (pkg.dependencies[dep] || pkg.devDependencies[dep]) continue;
+		const declared = pkg.dependencies[dep] ?? pkg.devDependencies[dep];
+		if (declared) {
+			// A declared dependency that can no longer satisfy the theme's
+			// requirement would break the build (e.g. a starter pinned astro@5
+			// while the theme needs astro@^7). Bump it and say so.
+			if (rangeLower(rangeFloor(declared), rangeFloor(range))) {
+				pkg.dependencies[dep] = range;
+				delete pkg.devDependencies[dep];
+				upgradedDeps.push({ dep, from: declared, to: range });
+				changed = true;
+			}
+			continue;
+		}
 		pkg.dependencies[dep] = range;
 		addedDeps.push(dep);
 		changed = true;
@@ -323,7 +337,10 @@ async function ensurePackageJson(packageName) {
 		await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
 		log.ok("package.json");
 	}
-	return addedDeps;
+	for (const { dep, from, to } of upgradedDeps) {
+		log.warn(`bumped ${dep} ${from} -> ${to} — the declared version no longer satisfies the theme`);
+	}
+	return [...addedDeps, ...upgradedDeps.map((d) => d.dep)];
 }
 
 /** Read the theme's declared peer dependencies. */
@@ -334,6 +351,27 @@ async function themePeers() {
 	} catch {
 		return {};
 	}
+}
+
+/**
+ * Lowest version a range admits, as [major, minor, patch]. Handles the common
+ * caret/tilde/plain forms ("^7.0.0", "~0.34.5", "7", ">=6"); anything
+ * unparseable ("latest", "*", …) is `null` and treated as unknown.
+ */
+function rangeFloor(range) {
+	if (typeof range !== "string") return null;
+	const m = range.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+	if (!m) return null;
+	return [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)];
+}
+
+/** Whether floor `a` is strictly below floor `b` (null floors are "unknown"). */
+function rangeLower(a, b) {
+	if (!a || !b) return false;
+	for (let i = 0; i < 3; i++) {
+		if (a[i] !== b[i]) return a[i] < b[i];
+	}
+	return false;
 }
 
 /**
@@ -374,6 +412,21 @@ async function installRootFiles({ force }) {
 	} else if (added > 0) {
 		log.ok(`root files (${added} added${skipped ? `, ${skipped} kept` : ""})`);
 	}
+}
+
+/** Root files the template ships but the project is currently missing. */
+function missingRootFiles() {
+	const out = [];
+	for (const entry of ROOT_FILES) {
+		const [srcName, dstName] = Array.isArray(entry) ? entry : [entry, entry];
+		if (
+			existsSync(join(TEMPLATE_DIR, srcName)) &&
+			!existsSync(join(CWD, dstName))
+		) {
+			out.push(dstName);
+		}
+	}
+	return out;
 }
 
 /** Pick the package manager from whatever lockfile already exists. */
@@ -507,7 +560,11 @@ async function ensureAstroConfig(packageName, { force }) {
 		}
 
 		const saved = await backup(name);
-		log.warn(`${name} did not register the theme — kept a copy at ${saved}`);
+		if (wired) {
+			log.ok(`${name} already wires the theme in — replaced with the template (--force), kept a copy at ${saved}`);
+		} else {
+			log.warn(`${name} did not register the theme — kept a copy at ${saved}`);
+		}
 	}
 
 	await cp(join(TEMPLATE_DIR, "astro.config.mjs"), target, { force: true });
@@ -756,30 +813,43 @@ async function checkState() {
 		}
 	}
 
-	return { missing, stale, fieldDiffs };
+	return { missing, stale, fieldDiffs, missingRoot: missingRootFiles() };
 }
 
 /**
  * `init` on an already-initialised project: report what drifted from the
- * template (missing files, removed/obsolete files, missing or extra fields)
- * and repair the safe bits — missing files are restored, nothing the user
- * wrote is overwritten.
+ * template (missing files, removed/obsolete files, missing or extra fields).
+ *
+ * By default it only *reports* — nothing is changed. Pass `apply: true`
+ * (the `--update` flag) to repair the safe bits: missing config files are
+ * restored, deleted root files and `public/` assets are re-added, and the
+ * remaining scaffold pieces are brought up to date. Either way nothing the
+ * user wrote is overwritten.
  */
-async function checkAndUpdate(packageName) {
+async function checkAndUpdate(packageName, { apply }) {
 	const usrConfig = join(CWD, CONTENT_ROOT, "config");
-	const { missing, stale, fieldDiffs } = await checkState();
+	const { missing, stale, fieldDiffs, missingRoot } = await checkState();
 
 	const clean =
-		missing.length === 0 && stale.length === 0 && fieldDiffs.length === 0;
+		missing.length === 0 &&
+		stale.length === 0 &&
+		fieldDiffs.length === 0 &&
+		missingRoot.length === 0;
 
 	if (clean) {
 		console.log(`\n${colours.green}${colours.bold}Up to date.${colours.reset}\n`);
+		if (!apply) return;
 	} else {
-		console.log(`\n${colours.bold}Found ${missing.length + stale.length + fieldDiffs.length} difference(s) from the template:${colours.reset}\n`);
+		const total =
+			missing.length + stale.length + fieldDiffs.length + missingRoot.length;
+		console.log(`\n${colours.bold}Found ${total} difference(s) from the template:${colours.reset}\n`);
 
 		if (missing.length) {
 			log.warn(`${missing.length} file(s) missing from ${CONTENT_ROOT}/config/`);
 			for (const f of missing) console.log(`    ${colours.dim}− ${f}${colours.reset}`);
+		}
+		if (missingRoot.length) {
+			log.warn(`${missingRoot.length} root file(s) missing: ${missingRoot.join(", ")}`);
 		}
 		if (stale.length) {
 			log.warn(`${stale.length} file(s) no longer exist in the template (kept)`);
@@ -793,6 +863,11 @@ async function checkAndUpdate(packageName) {
 				console.log(`    ${colours.dim}− ${name}: missing field(s): ${keys.join(", ")}${colours.reset}`);
 			for (const [name, keys] of Object.entries(d.extraFields))
 				console.log(`    ${colours.dim}− ${name}: field(s) not in template: ${keys.join(", ")}${colours.reset}`);
+		}
+
+		if (!apply) {
+			console.log(`\n${colours.dim}Nothing was changed. Run \`npx shirones init --update\` to restore the missing files and refresh the scaffold.${colours.reset}\n`);
+			return;
 		}
 
 		// Restore missing files (never touch the user's own files).
@@ -810,12 +885,17 @@ async function checkAndUpdate(packageName) {
 	}
 
 	// The remaining pieces are idempotent: they only add what is missing.
+	// Run on `--update` even when the config is clean, so deleted root files,
+	// public assets and `src/icons/` come back too.
 	await ensureAstroConfig(packageName, { force: false });
 	await copyEntry(
 		join(TEMPLATE_DIR, "src/content.config.ts"),
 		join(CWD, "src/content.config.ts"),
 		{ force: false },
 	);
+	await mergeDirectory(join(TEMPLATE_DIR, "public"), join(CWD, "public"), { force: false });
+	await mkdir(join(CWD, "src/icons"), { recursive: true });
+	await installRootFiles({ force: false });
 	await ensureTsConfig(packageName, { force: false });
 	const addedDeps = await ensurePackageJson(packageName);
 	await ensurePnpmWorkspace();
@@ -831,6 +911,7 @@ async function checkAndUpdate(packageName) {
 
 async function init(args) {
 	const force = args.includes("--force") || args.includes("-f");
+	const apply = args.includes("--update") || args.includes("-u");
 	const packageName = await readPackageName();
 
 	if (!existsSync(TEMPLATE_DIR)) {
@@ -842,10 +923,11 @@ async function init(args) {
 		return;
 	}
 
-	// Already initialised? Report drift from the template and repair the safe
-	// bits instead of re-scaffolding (never overwrites the user's files).
+	// Already initialised? Report drift from the template instead of
+	// re-scaffolding; `--update` repairs the safe bits (never overwrites the
+	// user's files).
 	if (existsSync(join(CWD, CONTENT_ROOT)) && !force) {
-		return checkAndUpdate(packageName);
+		return checkAndUpdate(packageName, { apply });
 	}
 
 	console.log(`\n${colours.bold}Shirone${colours.reset} · initialising project\n`);
@@ -911,17 +993,47 @@ ${colours.bold}Next${colours.reset}
 
 async function info() {
 	const packageName = await readPackageName();
+	const version = await readPackageVersion();
 	const pagesDir = join(PACKAGE_ROOT, "src/pages");
+	const tplConfigDir = join(TEMPLATE_DIR, CONTENT_ROOT, "config");
+	const tplDataDir = join(tplConfigDir, "data");
 
-	console.log(`\n${colours.bold}${packageName}${colours.reset}`);
-	console.log(`  package root : ${PACKAGE_ROOT}`);
-	console.log(`  template     : ${existsSync(TEMPLATE_DIR) ? "present" : colours.red + "MISSING" + colours.reset}`);
-	console.log(`  project      : ${CWD}`);
-	console.log(`  content dir  : ${join(CWD, CONTENT_ROOT)} ${existsSync(join(CWD, CONTENT_ROOT)) ? colours.green + "✓" + colours.reset : colours.yellow + "(not initialised)" + colours.reset}`);
+	const countTsFiles = async (dir) => {
+		if (!existsSync(dir)) return 0;
+		const entries = await readdir(dir, { withFileTypes: true });
+		return entries.filter((e) => e.isFile() && e.name.endsWith(".ts")).length;
+	};
+	const configModules = await countTsFiles(tplConfigDir);
+	const dataModules = await countTsFiles(tplDataDir);
 
+	console.log(`\n${colours.bold}${packageName}${colours.reset}${version ? ` ${colours.dim}v${version}${colours.reset}` : ""}\n`);
+	console.log(`  package         ${PACKAGE_ROOT}`);
+	console.log(`  template        ${existsSync(TEMPLATE_DIR) ? colours.green + "present" + colours.reset : colours.red + "MISSING" + colours.reset}`);
+	console.log(`  project         ${CWD}`);
+	console.log(`  package manager ${detectPackageManager()}`);
+	console.log(`  content dir     ${join(CWD, CONTENT_ROOT)}`);
 	if (existsSync(pagesDir)) {
-		const count = await countFiles(pagesDir);
-		console.log(`  routes       : ${count} page modules`);
+		const routes = await countFiles(pagesDir);
+		console.log(`  routes          ${routes} page modules`);
+	}
+	console.log(`  config modules  ${configModules} defaults${dataModules ? ` (+${dataModules} data)` : ""}`);
+
+	if (existsSync(join(CWD, CONTENT_ROOT))) {
+		const { missing, stale, fieldDiffs, missingRoot } = await checkState();
+		const total = missing.length + stale.length + fieldDiffs.length + missingRoot.length;
+		if (total === 0) {
+			console.log(`  drift           ${colours.green}up to date${colours.reset}`);
+		} else {
+			console.log(`  drift           ${colours.yellow}${total} difference(s)${colours.reset}`);
+			if (missing.length) console.log(`    ${colours.dim}− ${missing.length} config file(s) missing${colours.reset}`);
+			if (missingRoot.length) console.log(`    ${colours.dim}− ${missingRoot.length} root file(s) missing (${missingRoot.join(", ")})${colours.reset}`);
+			if (stale.length) console.log(`    ${colours.dim}− ${stale.length} stale file(s) kept${colours.reset}`);
+			if (fieldDiffs.length) console.log(`    ${colours.dim}− ${fieldDiffs.length} config file(s) differ from the template${colours.reset}`);
+			console.log(`    ${colours.dim}run \`npx shirones init --update\` to restore${colours.reset}`);
+		}
+	} else {
+		console.log(`  status          ${colours.yellow}not initialised${colours.reset}`);
+		console.log(`    ${colours.dim}run \`npx shirones init\` to scaffold${colours.reset}`);
 	}
 	console.log();
 }
@@ -930,9 +1042,11 @@ function help() {
 	console.log(`
 ${colours.bold}Shirone CLI${colours.reset}
 
-  ${colours.cyan}init${colours.reset} [--force]   Scaffold the project — or check an existing one for drift (missing/obsolete files, fields)
-  ${colours.cyan}info${colours.reset}             Show resolved paths and package status
-  ${colours.cyan}help${colours.reset}             Show this message
+  ${colours.cyan}init${colours.reset}                 Scaffold the project — or report drift on an existing one
+  ${colours.cyan}init${colours.reset} ${colours.dim}--update${colours.reset}        Restore missing files and refresh the scaffold (never overwrites your files)
+  ${colours.cyan}init${colours.reset} ${colours.dim}--force${colours.reset}         Re-scaffold, overwriting template files (never your content)
+  ${colours.cyan}info${colours.reset}                 Detailed status and drift report
+  ${colours.cyan}help${colours.reset}                 Show this message
 `);
 }
 
