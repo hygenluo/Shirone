@@ -116,29 +116,44 @@ test.describe("文章内系列块", () => {
 		const readingOrder = await page.evaluate((pairs) => {
 			const card = document.querySelector("[data-series-card]");
 			const content = document.querySelector(".markdown-content");
-			if (!card || !content) return { error: "正文或系列卡缺失" };
-
 			const follows = (anchor: Element, node: Element) =>
 				Boolean(
 					anchor.compareDocumentPosition(node) &
 						Node.DOCUMENT_POSITION_FOLLOWING,
 				);
 
-			return {
-				cardAfterContent: follows(content, card),
-				closersNotAfterCard: pairs
+			let closersBeforeCard: string[] = [];
+			if (card) {
+				closersBeforeCard = pairs
 					.map(([name, selector]) => {
 						const node = document.querySelector(selector);
-						if (!node) return `${name}:absent`;
-						return follows(card, node) ? null : `${name}:before-card`;
+						return node && !follows(card, node) ? name : null;
 					})
-					.filter((entry): entry is string => entry !== null),
+					.filter((entry): entry is string => entry !== null);
+			}
+
+			return {
+				// 存在性：demo 文章必须同时有正文、系列块与三个收尾区块，
+				// 否则顺序断言会退化成空断言（缺哪个在 missingClosers 里点名）
+				hasContent: Boolean(content),
+				hasCard: Boolean(card),
+				missingClosers: pairs
+					.filter(([, selector]) => !document.querySelector(selector))
+					.map(([name]) => name),
+				// 顺序：系列块在正文之后、每个收尾区块之前
+				cardAfterContent: Boolean(content && card && follows(content, card)),
+				closersBeforeCard,
 			};
 		}, closers);
 
-		expect(readingOrder.error).toBeUndefined();
+		// 存在性断言放在顺序断言之前：收尾区块没渲染时先在这里失败并点名，
+		// 不会被误读成「顺序错了」
+		expect(readingOrder.hasContent).toBe(true);
+		expect(readingOrder.hasCard).toBe(true);
+		expect(readingOrder.missingClosers).toEqual([]);
+
 		expect(readingOrder.cardAfterContent).toBe(true);
-		expect(readingOrder.closersNotAfterCard).toEqual([]);
+		expect(readingOrder.closersBeforeCard).toEqual([]);
 	});
 });
 
