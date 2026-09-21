@@ -100,6 +100,46 @@ test.describe("文章内系列块", () => {
 			);
 		}
 	});
+
+	test("bottom 位置紧贴正文：先于版权、分享与 Continue reading", async ({
+		page,
+	}) => {
+		await openSitePage(page, POST);
+
+		// 阅读顺序契约：cardPosition 默认 bottom = 正文之后、收尾区块（版权/分享/相关推荐）之前。
+		// 不锁具体像素位置，只锁 DOM 顺序——系列导航属于「继续读」，不应被署名/分发/推荐挤到页面末尾。
+		const closers: [string, string][] = [
+			["license", ".m3-license-card"],
+			["share", "[data-article-share]"],
+			["discovery", "[data-article-discovery]"],
+		];
+		const readingOrder = await page.evaluate((pairs) => {
+			const card = document.querySelector("[data-series-card]");
+			const content = document.querySelector(".markdown-content");
+			if (!card || !content) return { error: "正文或系列卡缺失" };
+
+			const follows = (anchor: Element, node: Element) =>
+				Boolean(
+					anchor.compareDocumentPosition(node) &
+						Node.DOCUMENT_POSITION_FOLLOWING,
+				);
+
+			return {
+				cardAfterContent: follows(content, card),
+				closersNotAfterCard: pairs
+					.map(([name, selector]) => {
+						const node = document.querySelector(selector);
+						if (!node) return `${name}:absent`;
+						return follows(card, node) ? null : `${name}:before-card`;
+					})
+					.filter((entry): entry is string => entry !== null),
+			};
+		}, closers);
+
+		expect(readingOrder.error).toBeUndefined();
+		expect(readingOrder.cardAfterContent).toBe(true);
+		expect(readingOrder.closersNotAfterCard).toEqual([]);
+	});
 });
 
 test("系列详情页按 seriesOrder 排序并标注篇号", async ({ page }) => {
