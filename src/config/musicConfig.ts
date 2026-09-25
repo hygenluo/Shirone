@@ -50,7 +50,9 @@ import { withUserConfig } from "../utils/config-overlay.ts";
  */
 export const musicConfig: MusicConfig = withUserConfig("music", {
 	enable: true,
-	provider: "mixed",
+	// Keep the default build and first visit offline. Opt into `meting` or
+	// `mixed` explicitly when a site owner accepts the third-party request.
+	provider: "local",
 	// tracks: [
 	// 	{
 	// 		id: "custom-1",
