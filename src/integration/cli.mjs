@@ -252,7 +252,7 @@ async function ensurePnpmWorkspace() {
 	log.ok("pnpm-workspace.yaml");
 }
 
-async function ensurePackageJson(packageName) {
+async function ensurePackageJson(packageName, { syncPackageManager = false } = {}) {
 	const pkgPath = join(CWD, "package.json");
 	const peers = await themePeers();
 	const packageManager = await readPackageManager();
@@ -343,9 +343,12 @@ async function ensurePackageJson(packageName) {
 		changed = true;
 	}
 
-	// Same package-manager pin as the freshly-created case, but never clobber
-	// a version the user already chose themselves.
-	if (packageManager && !pkg.packageManager) {
+	// A fresh project gets the package pin above. On an explicit `--update`,
+	// advance an older Shirone-generated pin to the current package pin too;
+	// otherwise the project would keep running the previous release's pnpm even
+	// after the user updated the theme. Do not touch a user's package manager
+	// during an ordinary init.
+	if (packageManager && (!pkg.packageManager || (syncPackageManager && pkg.packageManager !== packageManager))) {
 		pkg.packageManager = packageManager;
 		changed = true;
 	}
@@ -1012,7 +1015,7 @@ async function checkAndUpdate(packageName, { apply }) {
 	await mkdir(join(CWD, "src/icons"), { recursive: true });
 	await installRootFiles({ force: false });
 	await ensureTsConfig(packageName, { force: false });
-	const addedDeps = await ensurePackageJson(packageName);
+	const addedDeps = await ensurePackageJson(packageName, { syncPackageManager: true });
 	await ensurePnpmWorkspace();
 
 	if (addedDeps.length > 0) {
