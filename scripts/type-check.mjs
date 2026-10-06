@@ -87,20 +87,34 @@ const violations = diagnostics.filter((diagnostic) => {
 	return used >= (entry.maxCount ?? Number.POSITIVE_INFINITY);
 });
 
-const allowedSeen = diagnostics.length - violations.length;
+// Report what was waived and what was not: a file can hold both, and calling
+// a rejected diagnostic "tolerated" sends the reader down the wrong path.
+let allowedCount = 0;
 for (const entry of ALLOWED) {
-	const seen = diagnostics.filter(
-		(diagnostic) =>
+	const relevant = diagnostics.filter((diagnostic) => {
+		const sameFile =
 			diagnostic.file === entry.file ||
-			diagnostic.file.endsWith(`/${entry.file}`),
-	).length;
+			diagnostic.file.endsWith(`/${entry.file}`);
+		return sameFile && entry.codes.has(diagnostic.code);
+	});
+	const allowed = Math.min(relevant.length, entry.maxCount ?? relevant.length);
+	const rejected = relevant.length - allowed;
+	if (allowed === 0 && rejected === 0) {
+		console.log(
+			`[type-check] ${entry.file}: no matching diagnostic — ${entry.reason}`,
+		);
+		continue;
+	}
 	console.log(
-		`[type-check] ${entry.file}: ${seen} known diagnostic(s) tolerated — ${entry.reason}`,
+		`[type-check] ${entry.file}: ${allowed} allowed` +
+			(rejected > 0 ? `, ${rejected} rejected (over budget)` : "") +
+			` — ${entry.reason}`,
 	);
+	allowedCount += allowed;
 }
-if (allowedSeen === 0) {
+if (allowedCount === 0 && diagnostics.length > 0) {
 	console.log(
-		"[type-check] the content.config.ts exception is no longer used; " +
+		"[type-check] the documented exception is no longer used; " +
 			"drop it from ALLOWED once the file can be annotated.",
 	);
 }
