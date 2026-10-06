@@ -26,10 +26,23 @@ import { spawnSync } from "node:child_process";
 const ALLOWED = [
 	{
 		file: "src/content.config.ts",
+		// Scoped to the code and the count, deliberately: a file-wide exemption
+		// would wave through every future error here, which is a weaker
+		// guarantee than the comment claims.
+		codes: new Set(["TS9013"]),
+		maxCount: 4,
 		reason:
 			"Astro derives entry schemas from this file at build time; see the header comment.",
 	},
 ];
+
+/** Does this diagnostic fall inside `entry`'s documented exception? */
+function matchesEntry(diagnostic, entry) {
+	const sameFile =
+		diagnostic.file === entry.file ||
+		diagnostic.file.endsWith(`/${entry.file}`);
+	return sameFile && entry.codes.has(diagnostic.code);
+}
 
 const result = spawnSync(
 	process.execPath,
@@ -59,14 +72,20 @@ for (const line of lines) {
 	if (current && /^\s/.test(line) && line.trim()) current.text += `\n${line}`;
 }
 
-const violations = diagnostics.filter(
-	(diagnostic) =>
-		!ALLOWED.some(
-			(entry) =>
-				diagnostic.file === entry.file ||
-				diagnostic.file.endsWith(`/${entry.file}`),
-		),
-);
+// Classify every diagnostic once: inside a documented exception, or a
+// violation. An exemption names specific codes and a count, so a different
+// error code in the same file still fails, and so does anything past the
+// budget.
+const budgetUsed = new Map();
+const violations = diagnostics.filter((diagnostic) => {
+	const entry = ALLOWED.find((candidate) =>
+		matchesEntry(diagnostic, candidate),
+	);
+	if (!entry) return true;
+	const used = budgetUsed.get(entry) ?? 0;
+	budgetUsed.set(entry, used + 1);
+	return used >= (entry.maxCount ?? Number.POSITIVE_INFINITY);
+});
 
 const allowedSeen = diagnostics.length - violations.length;
 for (const entry of ALLOWED) {

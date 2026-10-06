@@ -69,16 +69,26 @@ export function shironesIconRegeneration(
 			// server down. The previous collection stays in place. Warn
 			// anyway: a swallowed error here means every icon silently
 			// renders blank, which is far harder to diagnose than a log line.
-			logger?.warn(
-				`[shirone] icon collection generation failed: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+			const message = `[shirone] icon collection generation failed: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			// Dev keeps going; the previous collection stays in place. A build
+			// does not: an icon that fails to resolve renders as nothing at
+			// runtime, which is exactly the silent breakage worth failing on.
+			if (isBuild) throw new Error(message, { cause: error });
+			logger?.warn(message);
 		}
 	};
 
+	// Set by `configResolved`; see the thumbnails plugin for the rationale.
+	let isBuild = false;
+
 	return {
 		name: "shirone:icon-regeneration",
+
+		configResolved(config) {
+			isBuild = config.command === "build";
+		},
 
 		// `Icon.svelte` imports `@/generated/local-icon-collections`, and in
 		// package mode that alias points at `node_modules/shirones/src` — so the

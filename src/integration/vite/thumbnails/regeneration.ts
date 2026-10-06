@@ -50,16 +50,27 @@ export function shironesThumbnailsRegeneration(
 				`[moment-thumbnails] ${summary} thumbnail assets for ${result.total} images${pruned}.`,
 			);
 		} catch (error) {
-			// A single unreadable image should not fail the build. The next run
-			// retries, since the cache is only advanced on success.
-			console.warn(
-				`[moment-thumbnails] generation failed: ${(error as Error).message}`,
-			);
+			// During `astro dev` a single unreadable image should not stop the
+			// server; the next run retries, since the cache only advances on
+			// success. A production build is different: the templates reference
+			// these files by name, so shipping without them means broken images
+			// rather than a degraded dev experience.
+			const message = `[moment-thumbnails] generation failed: ${(error as Error).message}`;
+			if (isBuild) throw new Error(message, { cause: error });
+			console.warn(message);
 		}
 	};
 
+	// Set by `configResolved`: `astro build` runs Vite in build mode, and a
+	// failed generation must stop that run rather than ship missing images.
+	let isBuild = false;
+
 	return {
 		name: "shirone:thumbnails-regeneration",
+
+		configResolved(config) {
+			isBuild = config.command === "build";
+		},
 
 		// Awaited, not fired and forgotten: sharp work must finish before Vite
 		// starts copying `public/`, or a cold build can ship a partially

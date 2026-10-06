@@ -18,6 +18,7 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import { CACHE_DIR_NAME } from "../../resolve/paths.ts";
 
 const WIDTHS = [192, 384, 640];
 const SUPPORTED_EXTENSIONS = new Set([
@@ -42,6 +43,12 @@ export interface MomentThumbnailOptions {
 	 * not delete them just because the repo has no moment images.
 	 */
 	prune?: boolean;
+	/**
+	 * Where the digest cache lives. Defaults to a dotfile outside the output
+	 * directory: everything under `public/` is copied verbatim into `dist/`
+	 * and served as-is, so a cache written there is published.
+	 */
+	cachePath?: string;
 }
 
 async function collectImages(directory: string): Promise<string[]> {
@@ -109,10 +116,25 @@ export async function generateMomentThumbnails({
 	sourceDir = "public/images/moments",
 	outputDir = "public/assets/moments/thumbnails",
 	prune = true,
+	cachePath: cachePathOption,
 }: MomentThumbnailOptions): Promise<MomentThumbnailResult> {
 	const sourceRoot = path.resolve(projectRoot, sourceDir);
 	const outputRoot = path.resolve(projectRoot, outputDir);
-	const cachePath = path.join(outputRoot, ".cache.json");
+	// Never inside `outputRoot`: that directory is published verbatim, so a
+	// cache file there would be served at a guessable URL and would disclose
+	// the content directory's shape along with each image's digest.
+	const cachePath =
+		cachePathOption ??
+		path.join(projectRoot, CACHE_DIR_NAME, "moment-thumbnails.json");
+	await fs.mkdir(path.dirname(cachePath), { recursive: true });
+
+	// Repositories generated before the cache moved still carry the old file
+	// inside `public/`, where the next build would copy it into `dist/` and
+	// publish it. Drop it on sight.
+	const legacyCache = path.join(outputRoot, ".cache.json");
+	if (legacyCache !== cachePath && existsSync(legacyCache)) {
+		await fs.rm(legacyCache, { force: true });
+	}
 
 	const images = await collectImages(sourceRoot);
 	const previousCache = await readCache(cachePath);

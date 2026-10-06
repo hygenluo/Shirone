@@ -46,7 +46,6 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { generateIconCollections } from "../../src/integration/vite/icon/collections.ts";
-import { generateMomentThumbnails } from "../../src/integration/vite/thumbnails/generate.ts";
 import {
 	FOOTER_HTML_TARGET,
 	GENERATED_CONFIG_FILE,
@@ -107,6 +106,16 @@ function cacheTargets() {
 		{
 			path: "node_modules/.cache/shirone",
 			label: "Config validation cache and digest",
+		},
+		{
+			path: ".shirones",
+			label: "Integration cache (loaded config modules, thumbnail digests)",
+		},
+		// 缩略图摘要缓存曾落在 public/ 下，会随构建产物发布；现在已移走，
+		// 但老仓库里可能还留着。
+		{
+			path: "public/assets/moments/thumbnails/.cache.json",
+			label: "Legacy thumbnail digest cache",
 		},
 	];
 }
@@ -751,19 +760,6 @@ if (await regenerate(iconRegenerate, "Offline icon collections")) {
 		);
 	}
 }
-await regenerate(
-	// In-process rather than through a CLI script: `buildStart` already
-	// regenerates thumbnails, and the logic lives in
-	// `src/integration/vite/thumbnails/generate.ts`.
-	() =>
-		generateMomentThumbnails({
-			projectRoot: ROOT,
-			// Thumbnails are exempt build-time artifacts here, so never prune
-			// outputs that the (possibly just-emptied) content no longer implies.
-			prune: false,
-		}).then(() => undefined),
-	"Moments thumbnails",
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. 收尾体检

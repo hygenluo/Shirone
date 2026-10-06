@@ -23,9 +23,10 @@ and in one request.
 
 `regeneration.ts` regenerates in two places:
 
-- `astro:config:setup` — the collection must exist before Vite resolves
-  `Icon.svelte`. This hook runs for `astro dev`, `astro build` *and*
-  `astro sync`, so all three get a fresh collection with no separate build step.
+- `buildStart` — the collection must exist before Vite resolves
+  `Icon.svelte`. This runs for `astro dev` and `astro build`. `astro sync`
+  does not fire it, so that command reads whatever the last dev or build
+  left behind; run `pnpm dev` once after adding an icon to a component.
 - `handleHotUpdate` — an icon added while the dev server is up regenerates
   without a restart. This is the reason the plugin exists at all; generation used
   to happen only in the script chain, which ran once before the server started.
