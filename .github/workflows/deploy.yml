@@ -1,22 +1,27 @@
-# 双仓部署：内容仓推送 -> 本仓库重新构建 -> 部署。
+# 双仓部署：内容仓推送 -> 本仓库重新构建 -> 触发线上部署。
 #
-# 由 templates 的 deploy.yml.example 改编而来，部署方式沿用原 Mizuki 站点：
-#   1. Actions 里构建出 dist/
-#   2. 把 dist/ 推送到本仓库的 `pages` 分支
-#   3. 若配置了 VERCEL_DEPLOY_HOOK，再触发一次 Vercel 部署钩子
+# 线上托管方式（2026-10 迁移后确定）：
+#   Vercel 以「源码模式」部署本仓库的 `main` 分支（Production Branch = main），
+#   构建命令 `pnpm build`、输出目录 `dist`，配置见仓库根目录 vercel.json。
+#   内容由 Vercel 侧的环境变量 CONTENT_REPO_URL 指向公开的内容仓 hygenluo/blogs
+#   在构建时拉取。
 #
-# 与原始 Mizuki deploy.yml 的差异（均已标注原因）：
-#   - 触发分支由 dev 改为 main（本仓库默认分支）
-#   - 内容仓由 CONTENT_REPO_URL 密钥同步改为直接 checkout hygenluo/blogs
-#   - 该内容仓是公开仓库，因此 checkout 不需要 token
-#   - 番剧同步步骤加了 continue-on-error，避免 Bangumi 接口波动导致部署失败
+# 因此本工作流的职责是：
+#   1. 在 GitHub Actions 里独立验证「内容 + 配置 + 构建」能通过
+#      （把内容问题和构建问题在日志里天然分开）
+#   2. 把 dist/ 作为静态产物留一份在 `pages` 分支，便于快速回滚与人工排查
+#   3. 调用 Vercel Deploy Hook 触发线上重建
 #
-# 平台变体（Vercel CLI / GitHub Pages / rsync / Deploy Hook）见同目录的
-# deploy.yml.example。
+# ⚠️ 重要：`main` 分支的内容或代码不变时，Vercel 不会自动重建；内容仓更新后
+# 线上能刷新，完全依赖第 3 步的 Deploy Hook。该 Hook 必须绑定到 `main` 分支，
+# 否则会去重建别的分支（例如旧的 dev），表现为「Actions 全绿但站点没变」。
 #
-# 所需 Secrets（全部可选，缺失时对应步骤自动跳过）：
-#   - VERCEL_DEPLOY_HOOK : Vercel 部署钩子地址
+# 所需 Secrets（缺失时对应步骤自动跳过）：
+#   - VERCEL_DEPLOY_HOOK : Vercel 部署钩子地址（必须绑定 main 分支）
 #   - BILI_SESSDATA      : Bilibili 追番进度（当前未启用 Bilibili 同步）
+#
+# 其他平台变体（Vercel CLI / GitHub Pages / rsync / Deploy Hook）见同目录的
+# deploy.yml.example。
 
 name: Deploy
 
