@@ -1,32 +1,36 @@
-# 双仓部署：内容仓推送 -> 本仓库重新构建 -> 触发线上部署。
+# 生产重建触发器
 #
-# 线上托管方式（2026-10 迁移后确定）：
-#   Vercel 以「源码模式」部署本仓库的 `main` 分支（Production Branch = main），
-#   构建命令 `pnpm build`、输出目录 `dist`，配置见仓库根目录 vercel.json。
-#   内容由 Vercel 侧的环境变量 CONTENT_REPO_URL 指向公开的内容仓 hygenluo/blogs
-#   在构建时拉取。
+# ├─ 部署模型（依据官方文档 docs/zh-CN/04-deployment/）
+# │    1. 托管平台（Vercel）以「源码模式」构建本仓库 `main` 分支，构建命令
+# │       `pnpm build`、产物目录 `dist`（见根目录 vercel.json），构建过程中通过
+# │       平台环境变量 `CONTENT_REPO_URL` 拉取私有内容仓。
+# │       → 对应文档《云托管平台 Deploy Hook 部署》
+# │    2. 内容仓推送 → 内容校验 → 派发 `content-updated` 事件 → 本工作流
+# │       → 调用平台 Deploy Hook → 平台重新构建并发布。
+# │       → 派发链路对应文档《GitHub Actions 跨仓自动构建》
+# │
+# ├─ 为什么本工作流刻意不拉取内容、不构建、不推送产物分支
+# │    * 内容仓已设为私有，跨仓读取需要额外的 CONTENT_REPO_TOKEN；
+# │    * 本仓库是公开仓库，任何内容副本（例如原先的 `pages` 产物分支）都会把
+# │      文章正文乃至未发布的草稿一并公开，与「内容私有」的目标直接冲突；
+# │    * 真正的构建由托管平台完成，与本地 `pnpm build` 等价（同样的
+# │      content:sync + astro build + pagefind + fonts:check 流程）。
+# │
+# ├─ 所需 Secrets
+# │    - VERCEL_DEPLOY_HOOK : 平台部署钩子地址，**必须绑定 `main` 分支**
+# │      内容仓推送不会改动本仓库的任何分支，线上刷新完全依赖这个钩子。
+# │
+# └─ 托管平台必须配置的环境变量
+#      CONTENT_REPO_URL     = https://x-access-token:<TOKEN>@github.com/hygenluo/blogs.git
+#      GIT_TERMINAL_PROMPT  = 0
+#      NODE_VERSION         = 22
 #
-# 因此本工作流的职责是：
-#   1. 在 GitHub Actions 里独立验证「内容 + 配置 + 构建」能通过
-#      （把内容问题和构建问题在日志里天然分开）
-#   2. 把 dist/ 作为静态产物留一份在 `pages` 分支，便于快速回滚与人工排查
-#   3. 调用 Vercel Deploy Hook 触发线上重建
-#
-# ⚠️ 重要：`main` 分支的内容或代码不变时，Vercel 不会自动重建；内容仓更新后
-# 线上能刷新，完全依赖第 3 步的 Deploy Hook。该 Hook 必须绑定到 `main` 分支，
-# 否则会去重建别的分支（例如旧的 dev），表现为「Actions 全绿但站点没变」。
-#
-# 所需 Secrets（缺失时对应步骤自动跳过）：
-#   - VERCEL_DEPLOY_HOOK : Vercel 部署钩子地址（必须绑定 main 分支）
-#   - BILI_SESSDATA      : Bilibili 追番进度（当前未启用 Bilibili 同步）
-#
-# 其他平台变体（Vercel CLI / GitHub Pages / rsync / Deploy Hook）见同目录的
-# deploy.yml.example。
+# 其余平台变体见同目录 deploy.yml.example。
 
 name: Deploy
 
 on:
-  # 代码变更。
+  # 主题代码变更。
   push:
     branches: [main]
     paths-ignore:
@@ -34,151 +38,64 @@ on:
       - "rules/**"
       - "README*.md"
       - "*.md"
-  # 内容仓推送后由内容仓的 trigger-build.yml 发来的事件。
+  # 内容仓推送后由内容仓的 trigger-build.yml 派发。
   repository_dispatch:
     types: [content-updated]
-  # 手动触发；回滚时把 content_ref 填成旧的内容 SHA。
-  workflow_dispatch:
-    inputs:
-      content_ref:
-        description: "内容仓 ref 或 commit SHA（留空使用 main）"
-        required: false
-        default: ""
-  # 兜底：repository_dispatch 事件偶尔会丢，每天重建一次保证最终一致。
+  # 手动触发。
+  workflow_dispatch: {}
+  # 兜底：派发事件偶尔会丢，每天重建一次保证最终一致。
   schedule:
     - cron: "17 4 * * *"
 
-# 同一时间只允许一个部署流水线运行；新请求取消进行中的旧构建。
+# 同一时间只允许一个流水线运行；新请求取消进行中的旧构建。
 concurrency:
   group: deploy
   cancel-in-progress: true
 
-# 推送到 pages 分支需要写权限。
 permissions:
-  contents: write
-
-env:
-  # 内容仓（公开仓库）。
-  CONTENT_REPOSITORY: hygenluo/blogs
-  CONTENT_WORKING_COPY: .content-src
-  # dist/ 推送到该分支，供 Vercel 等平台取用。
-  PAGES_BRANCH: pages
+  contents: read
 
 jobs:
-  deploy:
-    name: Build and deploy
+  trigger:
+    name: Trigger production rebuild
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      CI: true
-      # 让 content:sync 走「本地目录」模式，内容由下面的 checkout 步骤取得。
-      CONTENT_DIR: .content-src
-
+    timeout-minutes: 5 # 防止网络异常导致请求挂起，浪费 Actions 额度
     steps:
-      - name: Resolve content ref
-        id: target
-        # 经 env 传递而不是直接内插到脚本里：client_payload 属于外部输入，
-        # 直接内插会形成 shell 注入面。
+      - name: Resolve trigger source
+        id: source
+        # client_payload 属于外部输入，经 env 传递而不是直接内插进脚本。
         env:
           PAYLOAD_SHA: ${{ github.event.client_payload.sha }}
-          INPUT_REF: ${{ github.event.inputs.content_ref }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          ref="${PAYLOAD_SHA:-}"
-          [ -n "$ref" ] || ref="${INPUT_REF:-}"
-          [ -n "$ref" ] || ref="main"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "content_ref=${PAYLOAD_SHA:-main}" >> "$GITHUB_OUTPUT"
+          echo "event=$EVENT_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout theme
-        uses: actions/checkout@v4
-
-      - name: Checkout content
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.CONTENT_REPOSITORY }}
-          ref: ${{ steps.target.outputs.ref }}
-          path: ${{ env.CONTENT_WORKING_COPY }}
-          persist-credentials: false
-
-      - name: Record content commit
-        id: content
-        run: |
-          set -euo pipefail
-          echo "sha=$(git -C '${{ env.CONTENT_WORKING_COPY }}' rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          # 不写死版本：由 package.json 的 packageManager 字段决定，
-          # 写死会与 packageManager 冲突并触发 ERR_PNPM_BAD_PM_VERSION。
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
-
-      # 独立成步，而不是依赖 `pnpm build` 内部再跑一次：
-      # 内容问题（含 config/*.yaml 的类型校验）与构建问题因此在日志里天然分开，
-      # 且 fonts:subset 需要内容与配置都已就位。
-      - name: Materialize content and config
-        run: pnpm content:sync
-
-      # 番剧快照：未启用 provider 时自动跳过。
-      # continue-on-error：Bangumi 接口波动不应阻塞整站部署（快照缺失会自动回退本地数据）。
-      - name: Sync anime data (best effort)
-        continue-on-error: true
-        run: pnpm anime:sync --if-stale
-        env:
-          BILI_SESSDATA: ${{ secrets.BILI_SESSDATA }}
-
-      - name: Build site
-        run: pnpm build
-        env:
-          BILI_SESSDATA: ${{ secrets.BILI_SESSDATA }}
-
-      # 与原 Mizuki deploy.yml 一致：把构建产物推送到 pages 分支。
-      - name: Deploy to pages branch
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: ${{ env.PAGES_BRANCH }}
-          folder: dist
-          clean: true
-
-      # 与原 Mizuki deploy.yml 一致：构建成功后触发 Vercel 部署钩子。
-      # 未配置该 Secret 时静默跳过。
       - name: Trigger Vercel deploy hook
         env:
           VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        # 未配置该 Secret 时静默跳过，流水线仍为绿色。
         if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
         run: |
           set -euo pipefail
-          curl -fsS --retry 3 --retry-delay 2 --max-time 30 -X POST "$VERCEL_DEPLOY_HOOK"
+          curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
+            -X POST "$VERCEL_DEPLOY_HOOK"
 
       - name: Summarize
         if: always()
+        env:
+          EVENT_NAME: ${{ steps.source.outputs.event }}
+          CONTENT_REF: ${{ steps.source.outputs.content_ref }}
+          HOOK_CONFIGURED: ${{ secrets.VERCEL_DEPLOY_HOOK != '' }}
         run: |
           set -euo pipefail
           {
-            echo "### Shirone deploy"
+            echo "### Shirone deploy trigger"
             echo ""
-            echo "- 内容仓：\`${CONTENT_REPOSITORY}\`"
-            echo "- 内容 ref：\`${{ steps.target.outputs.ref }}\`"
-            echo "- 内容 commit：\`${{ steps.content.outputs.sha }}\`"
-            echo "- 产物分支：\`${PAGES_BRANCH}\`"
-            if [ -f content.lock.json ]; then
-              echo ""
-              echo "<details><summary>content.lock.json</summary>"
-              echo ""
-              echo '```json'
-              cat content.lock.json
-              echo '```'
-              echo ""
-              echo "</details>"
-            fi
+            echo "- 触发来源：\`${EVENT_NAME}\`"
+            echo "- 内容 ref：\`${CONTENT_REF}\`"
+            echo "- Deploy Hook 已配置：${HOOK_CONFIGURED}"
+            echo ""
+            echo "构建与发布由托管平台完成（源码模式构建 \`main\`）。"
           } >> "$GITHUB_STEP_SUMMARY"
