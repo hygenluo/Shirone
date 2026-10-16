@@ -1,0 +1,179 @@
+# 双仓部署：内容仓推送 -> 本仓库重新构建 -> 部署。
+#
+# 由 templates 的 deploy.yml.example 改编而来，部署方式沿用原 Mizuki 站点：
+#   1. Actions 里构建出 dist/
+#   2. 把 dist/ 推送到本仓库的 `pages` 分支
+#   3. 若配置了 VERCEL_DEPLOY_HOOK，再触发一次 Vercel 部署钩子
+#
+# 与原始 Mizuki deploy.yml 的差异（均已标注原因）：
+#   - 触发分支由 dev 改为 main（本仓库默认分支）
+#   - 内容仓由 CONTENT_REPO_URL 密钥同步改为直接 checkout hygenluo/blogs
+#   - 该内容仓是公开仓库，因此 checkout 不需要 token
+#   - 番剧同步步骤加了 continue-on-error，避免 Bangumi 接口波动导致部署失败
+#
+# 平台变体（Vercel CLI / GitHub Pages / rsync / Deploy Hook）见同目录的
+# deploy.yml.example。
+#
+# 所需 Secrets（全部可选，缺失时对应步骤自动跳过）：
+#   - VERCEL_DEPLOY_HOOK : Vercel 部署钩子地址
+#   - BILI_SESSDATA      : Bilibili 追番进度（当前未启用 Bilibili 同步）
+
+name: Deploy
+
+on:
+  # 代码变更。
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "rules/**"
+      - "README*.md"
+      - "*.md"
+  # 内容仓推送后由内容仓的 trigger-build.yml 发来的事件。
+  repository_dispatch:
+    types: [content-updated]
+  # 手动触发；回滚时把 content_ref 填成旧的内容 SHA。
+  workflow_dispatch:
+    inputs:
+      content_ref:
+        description: "内容仓 ref 或 commit SHA（留空使用 main）"
+        required: false
+        default: ""
+  # 兜底：repository_dispatch 事件偶尔会丢，每天重建一次保证最终一致。
+  schedule:
+    - cron: "17 4 * * *"
+
+# 同一时间只允许一个部署流水线运行；新请求取消进行中的旧构建。
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+# 推送到 pages 分支需要写权限。
+permissions:
+  contents: write
+
+env:
+  # 内容仓（公开仓库）。
+  CONTENT_REPOSITORY: hygenluo/blogs
+  CONTENT_WORKING_COPY: .content-src
+  # dist/ 推送到该分支，供 Vercel 等平台取用。
+  PAGES_BRANCH: pages
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+      # 让 content:sync 走「本地目录」模式，内容由下面的 checkout 步骤取得。
+      CONTENT_DIR: .content-src
+
+    steps:
+      - name: Resolve content ref
+        id: target
+        # 经 env 传递而不是直接内插到脚本里：client_payload 属于外部输入，
+        # 直接内插会形成 shell 注入面。
+        env:
+          PAYLOAD_SHA: ${{ github.event.client_payload.sha }}
+          INPUT_REF: ${{ github.event.inputs.content_ref }}
+        run: |
+          set -euo pipefail
+          ref="${PAYLOAD_SHA:-}"
+          [ -n "$ref" ] || ref="${INPUT_REF:-}"
+          [ -n "$ref" ] || ref="main"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout theme
+        uses: actions/checkout@v4
+
+      - name: Checkout content
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONTENT_REPOSITORY }}
+          ref: ${{ steps.target.outputs.ref }}
+          path: ${{ env.CONTENT_WORKING_COPY }}
+          persist-credentials: false
+
+      - name: Record content commit
+        id: content
+        run: |
+          set -euo pipefail
+          echo "sha=$(git -C '${{ env.CONTENT_WORKING_COPY }}' rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # 不写死版本：由 package.json 的 packageManager 字段决定，
+          # 写死会与 packageManager 冲突并触发 ERR_PNPM_BAD_PM_VERSION。
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      # 独立成步，而不是依赖 `pnpm build` 内部再跑一次：
+      # 内容问题（含 config/*.yaml 的类型校验）与构建问题因此在日志里天然分开，
+      # 且 fonts:subset 需要内容与配置都已就位。
+      - name: Materialize content and config
+        run: pnpm content:sync
+
+      # 番剧快照：未启用 provider 时自动跳过。
+      # continue-on-error：Bangumi 接口波动不应阻塞整站部署（快照缺失会自动回退本地数据）。
+      - name: Sync anime data (best effort)
+        continue-on-error: true
+        run: pnpm anime:sync --if-stale
+        env:
+          BILI_SESSDATA: ${{ secrets.BILI_SESSDATA }}
+
+      - name: Build site
+        run: pnpm build
+        env:
+          BILI_SESSDATA: ${{ secrets.BILI_SESSDATA }}
+
+      # 与原 Mizuki deploy.yml 一致：把构建产物推送到 pages 分支。
+      - name: Deploy to pages branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: ${{ env.PAGES_BRANCH }}
+          folder: dist
+          clean: true
+
+      # 与原 Mizuki deploy.yml 一致：构建成功后触发 Vercel 部署钩子。
+      # 未配置该 Secret 时静默跳过。
+      - name: Trigger Vercel deploy hook
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 --max-time 30 -X POST "$VERCEL_DEPLOY_HOOK"
+
+      - name: Summarize
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Shirone deploy"
+            echo ""
+            echo "- 内容仓：\`${CONTENT_REPOSITORY}\`"
+            echo "- 内容 ref：\`${{ steps.target.outputs.ref }}\`"
+            echo "- 内容 commit：\`${{ steps.content.outputs.sha }}\`"
+            echo "- 产物分支：\`${PAGES_BRANCH}\`"
+            if [ -f content.lock.json ]; then
+              echo ""
+              echo "<details><summary>content.lock.json</summary>"
+              echo ""
+              echo '```json'
+              cat content.lock.json
+              echo '```'
+              echo ""
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
