@@ -167,6 +167,9 @@ export type LicenseOverride = Partial<LicenseConfig> & {
 	source?: string;
 };
 
+/** 文章级版权覆写：对象写法，或用字符串简写许可证名称。 */
+export type LicenseOverrideInput = LicenseOverride | string;
+
 /** 文章版权卡片中的作者信息。 */
 export type LicenseAuthorInput = {
 	name?: string;

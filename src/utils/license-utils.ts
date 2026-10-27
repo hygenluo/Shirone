@@ -1,6 +1,6 @@
 import type {
 	LicenseConfig,
-	LicenseOverride,
+	LicenseOverrideInput,
 	ResolvedLicenseConfig,
 } from "@/types/config";
 
@@ -10,20 +10,22 @@ import type {
  */
 export function resolveLicenseConfig(
 	base: LicenseConfig,
-	override?: LicenseOverride | null,
+	override?: LicenseOverrideInput | null,
 	fallbackAuthor = "",
 ): ResolvedLicenseConfig {
-	const name = override?.name?.trim();
-	const url = override?.url?.trim();
-	const source = override?.source?.trim() || "";
-	const author = override?.author;
+	const input = typeof override === "string" ? { name: override } : override;
+	const name = input?.name?.trim();
+	const url = input?.url?.trim();
+	const source = input?.source?.trim() || "";
+	const author = input?.author;
 	const authorName =
 		(typeof author === "string" ? author : author?.name)?.trim() ||
 		fallbackAuthor;
-	const authorUrl = (typeof author === "object" ? author?.url?.trim() : "") || "";
+	const authorUrl =
+		(typeof author === "object" ? author?.url?.trim() : "") || "";
 
 	return {
-		enable: override?.enable ?? base.enable,
+		enable: input?.enable ?? base.enable,
 		name: name || base.name,
 		url: url || base.url,
 		author: {
