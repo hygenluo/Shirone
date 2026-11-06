@@ -178,6 +178,7 @@ export const es: Translation = {
 	[Key.announcementClose]: "Cerrar anuncio",
 
 	[Key.comments]: "Comentarios",
+	[Key.commentsEditor]: "Contenido del comentario",
 	[Key.commentsLoading]: "Cargando comentarios...",
 	[Key.commentsLoadFailed]: "Error al cargar comentarios",
 	[Key.commentsRequiresJavaScript]:
@@ -248,7 +249,7 @@ export const es: Translation = {
 		"La reproducción automática está bloqueada. Pulsa reproducir para comenzar.",
 	[Key.musicErrorInvalidTrack]: "Esta pista no es válida.",
 
-	[Key.themeColor]: "Theme Color",
+	[Key.themeColor]: "Color del tema",
 	[Key.colorStyle]: "Estilo de color",
 	[Key.colorSpec]: "Especificación",
 
@@ -282,6 +283,7 @@ export const es: Translation = {
 	[Key.lastUpdatedNotice]: "Última actualización el {date}, hace {days} días",
 	[Key.lastUpdatedWarning]: "Parte del contenido puede estar desactualizado",
 	[Key.license]: "Licencia",
+	[Key.reprintSource]: "Reimpreso de",
 	[Key.continueReading]: "Seguir leyendo",
 	[Key.relatedReading]: "Lecturas relacionadas",
 	[Key.relatedReadingSubtitle]: "Basadas en etiquetas y categorías compartidas",
@@ -343,4 +345,13 @@ export const es: Translation = {
 		"Añade esta URL a tu lector RSS/Atom favorito (como NetNewsWire, Feedly, Inoreader o Follow) para recibir actualizaciones.",
 	[Key.feedOpenXml]: "Ver XML original",
 	[Key.feedRecentPosts]: "Artículos recientes del canal",
+	[Key.menu]: "Menú",
+	[Key.mainNavigation]: "Navegación principal",
+	[Key.navigationDrawer]: "Panel de navegación",
+	[Key.breadcrumb]: "Ruta de navegación",
+	[Key.displaySettings]: "Ajustes de pantalla",
+	[Key.searchPanel]: "Panel de búsqueda",
+	[Key.lightDarkMode]: "Modo claro/oscuro",
+	[Key.resetToDefault]: "Restablecer valores predeterminados",
+	[Key.goToAboutPage]: "Ir a la página Acerca de",
 };

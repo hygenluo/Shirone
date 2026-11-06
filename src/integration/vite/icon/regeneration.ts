@@ -9,14 +9,15 @@
  *
  * Writing during `buildStart` is safe: it happens before Vite resolves any
  * import of the generated module, so `Icon.svelte` cannot observe a missing
- * file. `astro sync` and `astro check` do not run `buildStart`, so they read
- * whatever the last dev/build run left behind; run `pnpm dev` once after
- * adding an icon to a component.
+ * file. Verified that `astro dev`, `astro build`, `astro sync` and `astro check`
+ * all fire `buildStart`, so every entry point regenerates the collection and
+ * none of them needs a step in the script chain.
  */
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
+import { normalisePath } from "../../resolve/paths.ts";
 import type { ResolvedShironesPaths } from "../../types.ts";
 import {
 	generateIconCollections,
@@ -57,12 +58,17 @@ export function shironesIconRegeneration(
 	// `packageSrc` covers the theme's own components; `contentDir` covers a
 	// user's posts in package mode and does not exist in source mode.
 	const roots = [paths.packageSrc, paths.contentDir];
+	// The project's own `src/icons/`, emitted as the `local` collection. It is
+	// the only icon source owned by the user, so it is resolved from
+	// `projectRoot` rather than from the package.
+	const localIconDir = join(paths.projectRoot, "src", "icons");
 
 	const generate = () => {
 		try {
 			generateIconCollections({
 				roots,
 				outputPath: userCopy,
+				localIconDir,
 			});
 		} catch (error) {
 			// A typo in one post should cost one icon, not take the dev
@@ -101,10 +107,15 @@ export function shironesIconRegeneration(
 		// the bare specifier, because which one shows up depends on how the
 		// theme is being consumed.
 		resolveId(source) {
+			// Same separator hazard as the hot-update guard below: Vite hands
+			// paths through with posix separators on every platform, while the
+			// derived copies keep the platform separator. Compare normalized or
+			// the redirect silently misses on Windows.
+			const requested = normalisePath(source);
 			if (
-				source !== ICON_COLLECTIONS_SPECIFIER &&
-				source !== withoutExtension(userCopy) &&
-				source !== withoutExtension(packageCopy)
+				requested !== normalisePath(ICON_COLLECTIONS_SPECIFIER) &&
+				requested !== normalisePath(withoutExtension(userCopy)) &&
+				requested !== normalisePath(withoutExtension(packageCopy))
 			) {
 				return null;
 			}
@@ -117,8 +128,12 @@ export function shironesIconRegeneration(
 
 		handleHotUpdate({ file }) {
 			// Writing the output re-triggers this handler; regenerating again
-			// would loop.
-			if (file === userCopy) return;
+			// would loop. Vite hands `file` through with posix separators on
+			// every platform, while `userCopy` keeps the platform separator, so
+			// a bare `===` never matches on Windows: every write re-entered the
+			// handler and re-ran the generator in a self-sustaining loop, with
+			// one full page reload per write.
+			if (normalisePath(file) === normalisePath(userCopy)) return;
 			if (!SOURCE_EXTENSIONS.test(file)) return;
 
 			clearTimeout(pending.get(paths.projectRoot));

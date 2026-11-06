@@ -6,7 +6,6 @@ import type { AstroIntegration } from "astro";
 import {
 	expressiveCodeShared,
 	IMAGE_ENDPOINT_ROUTE,
-	iconInclude,
 	isMusicBundleFile,
 	MUSIC_SIDEBAR_VIRTUAL_ID,
 	mdxOptions,
@@ -18,6 +17,7 @@ import {
 	viteBuildShared,
 } from "../config/integrationsConfig.ts";
 import { buildFontDeclarations } from "./fonts.ts";
+import { indexPagefindDirectory } from "./pagefind.ts";
 import {
 	invalidateConfigCache,
 	loadConfigModule,
@@ -27,11 +27,16 @@ import { normalisePath, resolvePaths } from "./resolve/paths.ts";
 import {
 	buildOverrideRegistry,
 	createOverlayTargets,
+	findLegacyIconImports,
 	findOrphanUserFiles,
 	type OverrideRegistryRef,
 } from "./resolve/registry.ts";
 import { collectRoutes, filterRoutes } from "./routes.ts";
 import type { ResolvedShironesPaths, ShironesOptions } from "./types.ts";
+import {
+	reportPeerViolations,
+	verifyPeerRequirements,
+} from "./verify-peers.ts";
 import { shironesFallbackResolver } from "./vite/fallback-resolver.ts";
 import { shironesIconRegeneration } from "./vite/icon/regeneration.ts";
 import { shironesOverlay } from "./vite/overlay.ts";
@@ -172,6 +177,22 @@ export function shirones(options: ShironesOptions = {}): AstroIntegration {
 			}) => {
 				paths = resolvePaths(options, config.root, import.meta.url);
 
+				// Before anything else: a missing peer dependency fails later as a
+				// resolution error inside a bundled plugin, which names neither the
+				// dependency nor the fix. The theme repo is self-sufficient, so only
+				// package mode is checked.
+				const peerViolations = verifyPeerRequirements({
+					packageRoot: paths.packageRoot,
+					projectRoot: paths.projectRoot,
+					skip: paths.isThemeRepo,
+				});
+				if (reportPeerViolations(peerViolations, logger, paths.projectRoot)) {
+					throw new Error(
+						"[shirones] the project is missing dependencies the theme requires — " +
+							"see the error above for the list and the install command.",
+					);
+				}
+
 				logger.info(
 					`${paths.isThemeRepo ? "theme repository" : "installed package"} mode | content: ${paths.contentDir}`,
 				);
@@ -214,6 +235,22 @@ export function shirones(options: ShironesOptions = {}): AstroIntegration {
 								`${orphans.map((file) => `  - ${file}`).join("\n")}\n` +
 								"  This usually means the theme renamed a config module — " +
 								"check the release notes and move your edits across.",
+						);
+					}
+
+					// An override copied out of the theme before the icon rewrite
+					// still imports `astro-icon`, which no longer resolves, so
+					// its icons render as nothing. Say so, rather than letting a
+					// build fail on a module-not-found with no hint of why.
+					const legacyIconFiles = findLegacyIconImports(registry.overrides);
+					if (legacyIconFiles.length > 0) {
+						logger.warn(
+							`[overrides] ${legacyIconFiles.length} file(s) still import ` +
+								"`astro-icon`, which the theme no longer uses:\n" +
+								`${legacyIconFiles.map((file) => `  - ${file}`).join("\n")}\n` +
+								"  Import `atoms/display/Icon.svelte` instead and pass " +
+								'`icon="prefix:name"` — it renders server-side SVG from a ' +
+								"build-time collection, so no hydration island is needed.",
 						);
 					}
 				}
@@ -334,7 +371,16 @@ export function shirones(options: ShironesOptions = {}): AstroIntegration {
 					integrations,
 					markdown: { processor: processor as never },
 					vite: {
-						resolve: { alias: createAliases(paths) },
+						resolve: {
+							alias: createAliases(paths),
+							// Layout.astro resolves the default color scheme at build
+							// time; this package ships extensionless ESM imports that
+							// Node cannot load when externalized, so Vite bundles it.
+							noExternal: ["@material/material-color-utilities"],
+						},
+						// `as never`: DeepPartial<AstroConfig> maps arrays into a
+						// partial element type, which no precisely typed PluginOption[]
+						// can satisfy; the array's own elements stay checked above.
 						plugins: [
 							// The overlay rewriter redirects user files onto package
 							// files; inside the theme's own repository every import already
@@ -354,7 +400,7 @@ export function shirones(options: ShironesOptions = {}): AstroIntegration {
 							shironesSsrNodeShims(),
 							createMusicSidebarPlugin(paths, musicEnabled),
 							(await import("@tailwindcss/vite")).default(),
-						],
+						] as never,
 						optimizeDeps: {
 							// Only pre-bundle what the *user's* project can actually
 							// resolve. Under pnpm's strict layout these are nested
@@ -438,13 +484,11 @@ export function shirones(options: ShironesOptions = {}): AstroIntegration {
 				// (workers, exclusions, ...). Indexing here as well would build
 				// the index twice.
 				if (options.pagefind === false || paths.isThemeRepo) return;
-				const outDir = dir.pathname;
 				try {
 					const pagefind = await import("pagefind");
 					const { index } = await pagefind.createIndex({});
 					if (!index) throw new Error("Pagefind failed to create an index");
-					await index.addDirectory({ path: outDir });
-					await index.writeFiles({ outputPath: join(outDir, "pagefind") });
+					await indexPagefindDirectory(dir, index);
 					logger.info("pagefind index generated");
 				} catch (error) {
 					logger.warn(
@@ -505,7 +549,6 @@ async function createBundledIntegrations(
 ) {
 	const [
 		{ default: swup },
-		{ default: icon },
 		{ default: expressiveCode },
 		{ default: svelte, vitePreprocess },
 		{ default: sitemap },
@@ -514,7 +557,6 @@ async function createBundledIntegrations(
 		{ pluginLineNumbers },
 	] = await Promise.all([
 		import("@swup/astro"),
-		import("astro-icon"),
 		import("astro-expressive-code"),
 		import("@astrojs/svelte"),
 		import("@astrojs/sitemap"),
@@ -569,7 +611,6 @@ async function createBundledIntegrations(
 	return [
 		...(oddmiscIntegration ? [oddmiscIntegration] : []),
 		swup({ ...swupOptions, ...swupForwardOptions }),
-		icon({ include: iconInclude }),
 		expressiveCode({
 			// `themes` is built here rather than shared: it reads
 			// expressiveCodeConfig, which this mode loads through
