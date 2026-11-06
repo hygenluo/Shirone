@@ -175,6 +175,7 @@ export const ko: Translation = {
 	[Key.announcementClose]: "공지 닫기",
 
 	[Key.comments]: "댓글",
+	[Key.commentsEditor]: "댓글 내용",
 	[Key.commentsLoading]: "댓글을 불러오는 중...",
 	[Key.commentsLoadFailed]: "댓글을 불러오지 못했습니다",
 	[Key.commentsRequiresJavaScript]:
@@ -245,7 +246,7 @@ export const ko: Translation = {
 		"자동 재생이 차단되었습니다. 재생 버튼을 눌러 시작하세요.",
 	[Key.musicErrorInvalidTrack]: "곡 정보가 올바르지 않습니다.",
 
-	[Key.themeColor]: "Theme Color",
+	[Key.themeColor]: "테마 색상",
 	[Key.colorStyle]: "색상 스타일",
 	[Key.colorSpec]: "색상 규격",
 
@@ -279,6 +280,7 @@ export const ko: Translation = {
 	[Key.lastUpdatedNotice]: "마지막 업데이트: {date} ({days}일 전)",
 	[Key.lastUpdatedWarning]: "일부 내용이 오래되었을 수 있습니다",
 	[Key.license]: "라이선스",
+	[Key.reprintSource]: "출처",
 	[Key.continueReading]: "계속 읽기",
 	[Key.relatedReading]: "관련 글",
 	[Key.relatedReadingSubtitle]: "공통 태그와 카테고리를 바탕으로",
@@ -340,4 +342,13 @@ export const ko: Translation = {
 		"위 주소를 선호하는 RSS/Atom 리더기(NetNewsWire, Feedly, Inoreader, Follow 등)에 등록하여 새 글 알림을 받아보세요.",
 	[Key.feedOpenXml]: "원본 XML 보기",
 	[Key.feedRecentPosts]: "피드 최신 글",
+	[Key.menu]: "메뉴",
+	[Key.mainNavigation]: "기본 탐색",
+	[Key.navigationDrawer]: "탐색 서랍",
+	[Key.breadcrumb]: "이동 경로",
+	[Key.displaySettings]: "화면 설정",
+	[Key.searchPanel]: "검색 패널",
+	[Key.lightDarkMode]: "라이트/다크 모드",
+	[Key.resetToDefault]: "기본값으로 재설정",
+	[Key.goToAboutPage]: "소개 페이지로 이동",
 };

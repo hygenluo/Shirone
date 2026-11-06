@@ -175,6 +175,7 @@ export const ja: Translation = {
 	[Key.announcementClose]: "告知を閉じる",
 
 	[Key.comments]: "コメント",
+	[Key.commentsEditor]: "コメント本文",
 	[Key.commentsLoading]: "コメントを読み込み中...",
 	[Key.commentsLoadFailed]: "コメントの読み込みに失敗しました",
 	[Key.commentsRequiresJavaScript]:
@@ -245,7 +246,7 @@ export const ja: Translation = {
 		"自動再生がブロックされました。再生ボタンを押してください。",
 	[Key.musicErrorInvalidTrack]: "曲の情報が無効です。",
 
-	[Key.themeColor]: "Theme Color",
+	[Key.themeColor]: "テーマカラー",
 	[Key.colorStyle]: "配色スタイル",
 	[Key.colorSpec]: "配色仕様",
 
@@ -279,6 +280,7 @@ export const ja: Translation = {
 	[Key.lastUpdatedNotice]: "最終更新日: {date}（{days}日前）",
 	[Key.lastUpdatedWarning]: "一部の内容は古くなっている可能性があります",
 	[Key.license]: "ライセンス",
+	[Key.reprintSource]: "転載元",
 	[Key.continueReading]: "続きを読む",
 	[Key.relatedReading]: "関連記事",
 	[Key.relatedReadingSubtitle]: "共通するタグとカテゴリから",
@@ -340,4 +342,13 @@ export const ja: Translation = {
 		"上記の購読 URL をお好みの RSS/Atom リーダー（NetNewsWire、Feedly、Inoreader、Follow など）に登録すると、最新記事が通知されます。",
 	[Key.feedOpenXml]: "XML を直接表示",
 	[Key.feedRecentPosts]: "最新の配信記事",
+	[Key.menu]: "メニュー",
+	[Key.mainNavigation]: "メインナビゲーション",
+	[Key.navigationDrawer]: "ナビゲーションドロワー",
+	[Key.breadcrumb]: "パンくずリスト",
+	[Key.displaySettings]: "表示設定",
+	[Key.searchPanel]: "検索パネル",
+	[Key.lightDarkMode]: "ライト/ダークモード",
+	[Key.resetToDefault]: "既定に戻す",
+	[Key.goToAboutPage]: "About ページへ",
 };

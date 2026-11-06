@@ -6,6 +6,7 @@ import test, { after } from "node:test";
 import { pathToFileURL } from "node:url";
 import {
 	detectThemeRepo,
+	fileSystemPathFromUrl,
 	findPackageRoot,
 	normalisePath,
 	resolvePaths,
@@ -145,10 +146,59 @@ test("the repository comparison ignores the trailing slash config.root carries",
 	assert.equal(detectThemeRepo(siteRoot, themeRoot), false);
 });
 
+test("converts file URLs to filesystem paths on Windows and POSIX", () => {
+	const windowsUrl = new URL("file:///D:/Code/My%20Blog/dist/");
+	assert.equal(
+		fileSystemPathFromUrl(windowsUrl, { windows: true }),
+		"D:\\Code\\My Blog\\dist\\",
+	);
+	assert.equal(
+		fileSystemPathFromUrl(windowsUrl, { windows: false }),
+		"/D:/Code/My Blog/dist/",
+	);
+});
+
+test("normalises Vite filesystem IDs and Windows drive paths", () => {
+	assert.equal(
+		normalisePath("/@fs/D:/Users/Example/site/src/"),
+		"d:/users/example/site/src",
+	);
+	assert.equal(
+		normalisePath("/D:/Users/Example/site/src/"),
+		"d:/users/example/site/src",
+	);
+	assert.equal(
+		normalisePath("D:\\Users\\Example\\site\\src\\"),
+		"d:/users/example/site/src",
+	);
+	assert.equal(normalisePath("/D:/"), "d:");
+	assert.equal(
+		normalisePath("/@fs/home/user/site/src/"),
+		"/home/user/site/src",
+	);
+});
+
+test("normalises relative override keys with Windows case-insensitive semantics", () => {
+	assert.equal(
+		normalisePath("molecules/AnimeCard", { caseInsensitive: true }),
+		"molecules/animecard",
+	);
+	assert.equal(
+		normalisePath("molecules/animecard", { caseInsensitive: true }),
+		"molecules/animecard",
+	);
+	assert.equal(
+		normalisePath("molecules/AnimeCard", { caseInsensitive: false }),
+		"molecules/AnimeCard",
+	);
+});
+
 // ── The gate that used to misfire for a linked install ──────────────────────
 import { prebundleCandidates } from "../src/integration/index.ts";
 
-const SPECIFIERS = ["@swup/astro", "astro-icon", "stylus"];
+// `@iconify/svelte` stands where `astro-icon` did before the theme generated
+// its own icon collection.
+const SPECIFIERS = ["@swup/astro", "@iconify/svelte", "stylus"];
 
 test("pre-bundles the theme's own dependencies inside its repository", () => {
 	const paths = resolvePaths(

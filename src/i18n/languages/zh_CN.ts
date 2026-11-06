@@ -169,6 +169,7 @@ export const zh_CN: Translation = {
 	[Key.announcementClose]: "关闭公告",
 
 	[Key.comments]: "评论",
+	[Key.commentsEditor]: "评论内容",
 	[Key.commentsLoading]: "正在加载评论...",
 	[Key.commentsLoadFailed]: "评论加载失败",
 	[Key.commentsRequiresJavaScript]: "评论区需要启用 JavaScript 才能显示",
@@ -237,7 +238,7 @@ export const zh_CN: Translation = {
 	[Key.musicErrorAutoplayBlocked]: "自动播放受限，请点击播放按钮开始",
 	[Key.musicErrorInvalidTrack]: "歌曲信息无效",
 
-	[Key.themeColor]: "Theme Color",
+	[Key.themeColor]: "主题色",
 	[Key.colorStyle]: "配色风格",
 	[Key.colorSpec]: "配色规范",
 
@@ -271,6 +272,7 @@ export const zh_CN: Translation = {
 	[Key.lastUpdatedNotice]: "最后更新于 {date}，距今已过 {days} 天",
 	[Key.lastUpdatedWarning]: "部分内容可能已过时",
 	[Key.license]: "许可协议",
+	[Key.reprintSource]: "转载自",
 	[Key.continueReading]: "继续阅读",
 	[Key.relatedReading]: "沿着主题读",
 	[Key.relatedReadingSubtitle]: "基于共同的标签与分类",
@@ -329,4 +331,13 @@ export const zh_CN: Translation = {
 		"将上方订阅地址添加到任意 RSS/Atom 阅读器（如 NetNewsWire、Feedly、Inoreader、Follow 等），即可即时接收新文章推送。",
 	[Key.feedOpenXml]: "查看原始 XML",
 	[Key.feedRecentPosts]: "最新推送文章",
+	[Key.menu]: "菜单",
+	[Key.mainNavigation]: "主导航",
+	[Key.navigationDrawer]: "导航抽屉",
+	[Key.breadcrumb]: "面包屑导航",
+	[Key.displaySettings]: "显示设置",
+	[Key.searchPanel]: "搜索面板",
+	[Key.lightDarkMode]: "浅色/深色模式",
+	[Key.resetToDefault]: "恢复默认",
+	[Key.goToAboutPage]: "前往关于页",
 };

@@ -168,6 +168,7 @@ enum I18nKey {
 	announcementClose = "announcementClose",
 
 	comments = "comments",
+	commentsEditor = "commentsEditor",
 	commentsLoading = "commentsLoading",
 	commentsLoadFailed = "commentsLoadFailed",
 	commentsRequiresJavaScript = "commentsRequiresJavaScript",
@@ -295,6 +296,7 @@ enum I18nKey {
 	lastUpdatedNotice = "lastUpdatedNotice",
 	lastUpdatedWarning = "lastUpdatedWarning",
 	license = "license",
+	reprintSource = "reprintSource",
 	continueReading = "continueReading",
 	relatedReading = "relatedReading",
 	relatedReadingSubtitle = "relatedReadingSubtitle",
@@ -331,6 +333,15 @@ enum I18nKey {
 	feedHowToUseDesc = "feedHowToUseDesc",
 	feedOpenXml = "feedOpenXml",
 	feedRecentPosts = "feedRecentPosts",
+	menu = "menu",
+	mainNavigation = "mainNavigation",
+	navigationDrawer = "navigationDrawer",
+	breadcrumb = "breadcrumb",
+	displaySettings = "displaySettings",
+	searchPanel = "searchPanel",
+	lightDarkMode = "lightDarkMode",
+	resetToDefault = "resetToDefault",
+	goToAboutPage = "goToAboutPage",
 }
 
 export default I18nKey;

@@ -167,6 +167,7 @@ export const th: Translation = {
 	[Key.announcementClose]: "ปิดประกาศ",
 
 	[Key.comments]: "ความคิดเห็น",
+	[Key.commentsEditor]: "เนื้อหาความคิดเห็น",
 	[Key.commentsLoading]: "กำลังโหลดความคิดเห็น...",
 	[Key.commentsLoadFailed]: "โหลดความคิดเห็นไม่สำเร็จ",
 	[Key.commentsRequiresJavaScript]:
@@ -236,7 +237,7 @@ export const th: Translation = {
 	[Key.musicErrorAutoplayBlocked]: "ระบบบล็อกการเล่นอัตโนมัติ กดปุ่มเล่นเพื่อเริ่ม",
 	[Key.musicErrorInvalidTrack]: "ข้อมูลเพลงนี้ไม่ถูกต้อง",
 
-	[Key.themeColor]: "Theme Color",
+	[Key.themeColor]: "สีธีม",
 	[Key.colorStyle]: "สไตล์สี",
 	[Key.colorSpec]: "สเปกสี",
 
@@ -270,6 +271,7 @@ export const th: Translation = {
 	[Key.lastUpdatedNotice]: "อัปเดตล่าสุดเมื่อ {date} ผ่านมาแล้ว {days} วัน",
 	[Key.lastUpdatedWarning]: "เนื้อหาบางส่วนอาจล้าสมัย",
 	[Key.license]: "สัญญาอนุญาต",
+	[Key.reprintSource]: "ที่มาจาก",
 	[Key.continueReading]: "อ่านต่อ",
 	[Key.relatedReading]: "บทความที่เกี่ยวข้อง",
 	[Key.relatedReadingSubtitle]: "อิงจากแท็กและหมวดหมู่ร่วมกัน",
@@ -328,4 +330,13 @@ export const th: Translation = {
 		"เพิ่ม URL ฟีดด้านบนลงในโปรแกรมอ่าน RSS/Atom (เช่น NetNewsWire, Feedly, Inoreader, Follow) เพื่อรับการแจ้งเตือนบทความใหม่",
 	[Key.feedOpenXml]: "ดู XML ต้นฉบับ",
 	[Key.feedRecentPosts]: "บทความล่าสุดในฟีด",
+	[Key.menu]: "เมนู",
+	[Key.mainNavigation]: "การนำทางหลัก",
+	[Key.navigationDrawer]: "แผงนำทาง",
+	[Key.breadcrumb]: "เส้นทางนำทาง",
+	[Key.displaySettings]: "การตั้งค่าการแสดงผล",
+	[Key.searchPanel]: "แผงค้นหา",
+	[Key.lightDarkMode]: "โหมดสว่าง/มืด",
+	[Key.resetToDefault]: "รีเซ็ตเป็นค่าเริ่มต้น",
+	[Key.goToAboutPage]: "ไปยังหน้าเกี่ยวกับ",
 };
