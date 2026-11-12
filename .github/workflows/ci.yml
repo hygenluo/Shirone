@@ -1,10 +1,10 @@
 name: Shirone CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  # Fork-specific: this repo consumes the upstream theme in dual-repo mode, so
+  # materialized content (src/content etc.) is untracked and the demo posts the
+  # browser/manifest suites target can never exist in CI. Kept for manual runs
+  # only; upstream merges should not restore push/PR triggers.
   workflow_dispatch:
 
 concurrency:
